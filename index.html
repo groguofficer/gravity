@@ -184,6 +184,8 @@
       setStatus('');
 
       const TARGET_VALUE = 59;
+      const lowestEntry = Math.min(...rows.map(r => r.y));
+      const yAxisMin = Math.min(TARGET_VALUE - 2, lowestEntry - 2);
       const targetLine = [
         { x: rows[0].x, y: TARGET_VALUE },
         { x: rows[rows.length - 1].x, y: TARGET_VALUE }
@@ -246,6 +248,7 @@
               ticks: { color: '#7a6a53' }
             },
             y: {
+              min: yAxisMin,
               grid: { color: '#e4d9bd' },
               ticks: { color: '#7a6a53' },
               title: { display: true, text: 'Entry', color: '#7a6a53' }
