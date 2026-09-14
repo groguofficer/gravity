@@ -133,15 +133,24 @@
         const entryCell = r.c[entryIdx];
         if (!dateCell || entryCell === null || entryCell === undefined) return null;
 
-        let dateVal = dateCell.f || dateCell.v;
-        // Google Date(...) serialization -> "Date(2024,0,15)"
-        if (typeof dateVal === 'string' && dateVal.startsWith('Date(')) {
-          const parts = dateVal.match(/Date\((\d+),(\d+),(\d+)/);
-          if (parts) {
-            dateVal = new Date(+parts[1], +parts[2], +parts[3]);
-          }
+        // Prefer the raw value; fall back to the formatted display string.
+        let raw = dateCell.v !== undefined && dateCell.v !== null ? dateCell.v : dateCell.f;
+        let dateVal;
+
+        if (typeof raw === 'string' && raw.startsWith('Date(')) {
+          // Native Google Sheets date serialization -> "Date(2026,8,13)" (month is 0-indexed)
+          const parts = raw.match(/Date\((\d+),(\d+),(\d+)/);
+          dateVal = parts ? new Date(+parts[1], +parts[2], +parts[3]) : new Date(NaN);
+        } else if (typeof raw === 'string' && /^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(raw.trim())) {
+          // Plain text or display string in DD/MM/YYYY (day-first) format
+          const [d, m, y] = raw.trim().split('/').map(Number);
+          const fullYear = y < 100 ? 2000 + y : y;
+          dateVal = new Date(fullYear, m - 1, d);
+        } else if (typeof raw === 'string' && /^\d{4}-\d{2}-\d{2}/.test(raw.trim())) {
+          // ISO format YYYY-MM-DD
+          dateVal = new Date(raw.trim());
         } else {
-          dateVal = new Date(dateVal);
+          dateVal = new Date(raw);
         }
 
         const entryVal = typeof entryCell.v === 'number' ? entryCell.v : parseFloat(entryCell.v);
