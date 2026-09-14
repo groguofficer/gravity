@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gravity Log</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-adapter-date-fns/3.0.0/chartjs-adapter-date-fns.bundle.min.js"></script>
+<style>
+  :root {
+    --bg: #f2ead9;
+    --panel: #fbf6ea;
+    --ink: #3e3226;
+    --muted: #7a6a53;
+    --line: #8a9a5b;
+    --line-fill: rgba(138, 154, 91, 0.15);
+    --accent: #a9744f;
+    --border: #d8c9a8;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    padding: 2rem 1rem;
+    min-height: 100vh;
+    background: var(--bg);
+    background-image:
+      radial-gradient(circle at 20% 20%, rgba(169, 116, 79, 0.06), transparent 40%),
+      radial-gradient(circle at 80% 80%, rgba(138, 154, 91, 0.08), transparent 45%);
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    color: var(--ink);
+    display: flex;
+    justify-content: center;
+  }
+
+  .card {
+    width: 100%;
+    max-width: 900px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 2rem;
+    box-shadow: 0 6px 18px rgba(62, 50, 38, 0.08);
+  }
+
+  h1 {
+    margin: 0 0 0.25rem 0;
+    font-size: 1.6rem;
+    letter-spacing: 0.02em;
+    color: var(--ink);
+  }
+
+  .subtitle {
+    margin: 0 0 1.5rem 0;
+    color: var(--muted);
+    font-size: 0.95rem;
+  }
+
+  .chart-wrap {
+    position: relative;
+    height: 420px;
+    width: 100%;
+  }
+
+  .status {
+    text-align: center;
+    color: var(--muted);
+    padding: 3rem 0;
+    font-size: 0.95rem;
+  }
+
+  .status.error {
+    color: #a04a3a;
+  }
+
+  footer {
+    margin-top: 1.25rem;
+    text-align: right;
+    font-size: 0.78rem;
+    color: var(--muted);
+  }
+</style>
+</head>
+<body>
+
+<div class="card">
+  <h1>🌍 Gravity Log</h1>
+  <p class="subtitle">Entries over time, pulled live from the shared spreadsheet.</p>
+  <div class="chart-wrap">
+    <canvas id="gravityChart"></canvas>
+  </div>
+  <div id="status" class="status">Loading data…</div>
+  <footer>Source: Google Sheets · tab "gravity"</footer>
+</div>
+
+<script>
+  // ---- Configuration ----
+  const SHEET_ID = "1TuLuKPAGWYqXNb-hhPg38pRxQqDHZ46rbRMDZyuApHc";
+  const SHEET_NAME = "gravity";
+  const GVIZ_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(SHEET_NAME)}`;
+
+  const statusEl = document.getElementById('status');
+
+  function setStatus(msg, isError = false) {
+    statusEl.textContent = msg;
+    statusEl.className = 'status' + (isError ? ' error' : '');
+    statusEl.style.display = msg ? 'block' : 'none';
+  }
+
+  function parseGvizResponse(text) {
+    // Response looks like: google.visualization.Query.setResponse({...});
+    const match = text.match(/google\.visualization\.Query\.setResponse\(([\s\S]*)\);?\s*$/);
+    if (!match) throw new Error("Unexpected response format from Google Sheets.");
+    return JSON.parse(match[1]);
+  }
+
+  function extractRows(json) {
+    if (json.status === 'error') {
+      const msg = (json.errors && json.errors[0] && json.errors[0].detailed_message) || 'Sheet returned an error.';
+      throw new Error(msg);
+    }
+
+    const cols = json.table.cols.map(c => (c.label || c.id || '').toLowerCase().trim());
+    let dateIdx = cols.findIndex(c => c.includes('date'));
+    let entryIdx = cols.findIndex(c => c.includes('entry'));
+    if (dateIdx === -1) dateIdx = 0;
+    if (entryIdx === -1) entryIdx = 1;
+
+    const rows = json.table.rows
+      .map(r => {
+        const dateCell = r.c[dateIdx];
+        const entryCell = r.c[entryIdx];
+        if (!dateCell || entryCell === null || entryCell === undefined) return null;
+
+        let dateVal = dateCell.f || dateCell.v;
+        // Google Date(...) serialization -> "Date(2024,0,15)"
+        if (typeof dateVal === 'string' && dateVal.startsWith('Date(')) {
+          const parts = dateVal.match(/Date\((\d+),(\d+),(\d+)/);
+          if (parts) {
+            dateVal = new Date(+parts[1], +parts[2], +parts[3]);
+          }
+        } else {
+          dateVal = new Date(dateVal);
+        }
+
+        const entryVal = typeof entryCell.v === 'number' ? entryCell.v : parseFloat(entryCell.v);
+        if (isNaN(dateVal.getTime()) || isNaN(entryVal)) return null;
+
+        return { x: dateVal, y: entryVal };
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.x - b.x);
+
+    return rows;
+  }
+
+  async function loadChart() {
+    try {
+      const res = await fetch(GVIZ_URL);
+      if (!res.ok) throw new Error(`Could not reach the sheet (HTTP ${res.status}). Make sure it's shared as "Anyone with the link can view".`);
+      const text = await res.text();
+      const json = parseGvizResponse(text);
+      const rows = extractRows(json);
+
+      if (rows.length === 0) {
+        setStatus('No valid entries found in the "gravity" tab yet.');
+        return;
+      }
+
+      setStatus('');
+
+      const ctx = document.getElementById('gravityChart').getContext('2d');
+      new Chart(ctx, {
+        type: 'line',
+        data: {
+          datasets: [{
+            label: 'Entry',
+            data: rows,
+            borderColor: '#8a9a5b',
+            backgroundColor: 'rgba(138, 154, 91, 0.15)',
+            pointBackgroundColor: '#a9744f',
+            pointBorderColor: '#fbf6ea',
+            pointRadius: 4,
+            pointHoverRadius: 6,
+            borderWidth: 2,
+            tension: 0.25,
+            fill: true,
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              backgroundColor: '#3e3226',
+              titleColor: '#fbf6ea',
+              bodyColor: '#fbf6ea',
+              padding: 10,
+              cornerRadius: 6,
+            }
+          },
+          scales: {
+            x: {
+              type: 'time',
+              time: { unit: 'day', tooltipFormat: 'MMM d, yyyy' },
+              grid: { color: '#e4d9bd' },
+              ticks: { color: '#7a6a53' }
+            },
+            y: {
+              grid: { color: '#e4d9bd' },
+              ticks: { color: '#7a6a53' },
+              title: { display: true, text: 'Entry', color: '#7a6a53' }
+            }
+          }
+        }
+      });
+
+    } catch (err) {
+      console.error(err);
+      setStatus('⚠ ' + err.message, true);
+    }
+  }
+
+  loadChart();
+</script>
+
+</body>
+</html>
