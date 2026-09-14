@@ -183,29 +183,53 @@
 
       setStatus('');
 
+      const TARGET_VALUE = 59;
+      const targetLine = [
+        { x: rows[0].x, y: TARGET_VALUE },
+        { x: rows[rows.length - 1].x, y: TARGET_VALUE }
+      ];
+
       const ctx = document.getElementById('gravityChart').getContext('2d');
       new Chart(ctx, {
         type: 'line',
         data: {
-          datasets: [{
-            label: 'Entry',
-            data: rows,
-            borderColor: '#8a9a5b',
-            backgroundColor: 'rgba(138, 154, 91, 0.15)',
-            pointBackgroundColor: '#a9744f',
-            pointBorderColor: '#fbf6ea',
-            pointRadius: 4,
-            pointHoverRadius: 6,
-            borderWidth: 2,
-            tension: 0.25,
-            fill: true,
-          }]
+          datasets: [
+            {
+              label: 'Entry',
+              data: rows,
+              borderColor: '#8a9a5b',
+              backgroundColor: 'rgba(138, 154, 91, 0.15)',
+              pointBackgroundColor: '#a9744f',
+              pointBorderColor: '#fbf6ea',
+              pointRadius: 4,
+              pointHoverRadius: 6,
+              borderWidth: 2,
+              tension: 0.25,
+              fill: true,
+              order: 1,
+            },
+            {
+              label: `Target (${TARGET_VALUE})`,
+              data: targetLine,
+              borderColor: '#a9744f',
+              borderDash: [6, 5],
+              borderWidth: 2,
+              pointRadius: 0,
+              pointHitRadius: 0,
+              fill: false,
+              tension: 0,
+              order: 0,
+            }
+          ]
         },
         options: {
           responsive: true,
           maintainAspectRatio: false,
           plugins: {
-            legend: { display: false },
+            legend: {
+              display: true,
+              labels: { color: '#7a6a53', usePointStyle: true, boxWidth: 8 }
+            },
             tooltip: {
               backgroundColor: '#3e3226',
               titleColor: '#fbf6ea',
