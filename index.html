@@ -4,8 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Gravity Log</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/chartjs-adapter-date-fns/3.0.0/chartjs-adapter-date-fns.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
 <style>
   :root {
     --bg: #f2ead9;
@@ -166,6 +166,10 @@
 
   async function loadChart() {
     try {
+      if (typeof Chart === 'undefined') {
+        throw new Error('The charting library failed to load from the CDN. This is usually caused by an ad-blocker or privacy extension — try disabling it for this page and reloading.');
+      }
+
       const res = await fetch(GVIZ_URL);
       if (!res.ok) throw new Error(`Could not reach the sheet (HTTP ${res.status}). Make sure it's shared as "Anyone with the link can view".`);
       const text = await res.text();
@@ -232,7 +236,7 @@
     }
   }
 
-  loadChart();
+  window.addEventListener('load', loadChart);
 </script>
 
 </body>
