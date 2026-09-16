@@ -321,7 +321,11 @@
 
         let value;
         if (mode === 'boolean') {
-          value = typeof rawVal === 'string' && rawVal.trim().toUpperCase() === 'Y';
+          if (typeof rawVal === 'string' && rawVal.trim() !== '') {
+            value = rawVal.trim().toUpperCase() === 'Y';
+          } else {
+            value = null; // blank cell -> no data, not "No"
+          }
         } else {
           const num = typeof rawVal === 'number' ? rawVal : parseFloat(rawVal);
           value = isNaN(num) ? null : num;
