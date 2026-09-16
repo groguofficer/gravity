@@ -210,7 +210,7 @@
   <h2>🥔 Starchy Carbs (Day)</h2>
   <p class="subtitle">One grid per year — columns are months, rows are days of the month.</p>
   <div class="grid-legend">
-    <span class="legend-item"><span class="swatch yes"></span> Yes</span>
+    <span class="legend-item">Low <span class="legend-gradient"></span> High</span>
     <span class="legend-item"><span class="swatch empty"></span> No data</span>
   </div>
   <div id="yearGridsCarbs"></div>
@@ -221,7 +221,7 @@
   <h2>🍬 Free Sugars (Day)</h2>
   <p class="subtitle">One grid per year — columns are months, rows are days of the month.</p>
   <div class="grid-legend">
-    <span class="legend-item"><span class="swatch yes"></span> Yes</span>
+    <span class="legend-item">Low <span class="legend-gradient"></span> High</span>
     <span class="legend-item"><span class="swatch empty"></span> No data</span>
   </div>
   <div id="yearGridsSugars"></div>
@@ -321,11 +321,7 @@
 
         let value;
         if (mode === 'boolean') {
-          if (typeof rawVal === 'string' && rawVal.trim() !== '') {
-            value = rawVal.trim().toUpperCase() === 'Y';
-          } else {
-            value = null; // blank cell -> no data, not "No"
-          }
+          value = typeof rawVal === 'string' && rawVal.trim().toUpperCase() === 'Y';
         } else {
           const num = typeof rawVal === 'number' ? rawVal : parseFloat(rawVal);
           value = isNaN(num) ? null : num;
@@ -569,7 +565,7 @@
         containerId: 'yearGridsCarbs',
         statusId: 'gridStatusCarbs',
         matcher: c => c.includes('starchy') && c.includes('carb'),
-        mode: 'boolean',
+        mode: 'numeric',
         columnLabel: 'Starchy Carbs (Day)'
       });
 
@@ -577,7 +573,7 @@
         containerId: 'yearGridsSugars',
         statusId: 'gridStatusSugars',
         matcher: c => c.includes('free') && c.includes('sugar'),
-        mode: 'boolean',
+        mode: 'numeric',
         columnLabel: 'Free Sugars (Day)'
       });
 
