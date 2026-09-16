@@ -94,7 +94,6 @@
 
   .grid-legend {
     display: flex;
-    align-items: center;
     gap: 1.25rem;
     margin-bottom: 1.25rem;
     font-size: 0.85rem;
@@ -119,16 +118,6 @@
   .swatch.yes { background: var(--line); border-color: var(--line); }
   .swatch.no { background: var(--panel); }
   .swatch.empty { background: transparent; border-style: dashed; }
-
-  .legend-gradient {
-    display: inline-block;
-    width: 120px;
-    height: 12px;
-    border-radius: 3px;
-    border: 1px solid var(--border);
-    vertical-align: middle;
-    background: linear-gradient(to right, rgba(138, 154, 91, 0.15), rgba(138, 154, 91, 1));
-  }
 
   .year-grid-wrapper {
     margin-bottom: 2rem;
@@ -200,32 +189,10 @@
   <div class="grid-legend">
     <span class="legend-item"><span class="swatch yes"></span> Yes</span>
     <span class="legend-item"><span class="swatch no"></span> No</span>
-    <span class="legend-item"><span class="swatch empty"></span> No data</span>
+    
   </div>
-  <div id="yearGridsFood"></div>
-  <div id="gridStatusFood" class="status"></div>
-</div>
-
-<div class="card grid-card">
-  <h2>🥔 Starchy Carbs (Day)</h2>
-  <p class="subtitle">One grid per year — columns are months, rows are days of the month.</p>
-  <div class="grid-legend">
-    <span class="legend-item">Low <span class="legend-gradient"></span> High</span>
-    <span class="legend-item"><span class="swatch empty"></span> No data</span>
-  </div>
-  <div id="yearGridsCarbs"></div>
-  <div id="gridStatusCarbs" class="status"></div>
-</div>
-
-<div class="card grid-card">
-  <h2>🍬 Free Sugars (Day)</h2>
-  <p class="subtitle">One grid per year — columns are months, rows are days of the month.</p>
-  <div class="grid-legend">
-    <span class="legend-item">Low <span class="legend-gradient"></span> High</span>
-    <span class="legend-item"><span class="swatch empty"></span> No data</span>
-  </div>
-  <div id="yearGridsSugars"></div>
-  <div id="gridStatusSugars" class="status"></div>
+  <div id="yearGrids"></div>
+  <div id="gridStatus" class="status"></div>
 </div>
 
 <script>
@@ -299,65 +266,45 @@
     return rows;
   }
 
-  // ---- Generic year-grid data extraction ----
-  // mode: 'boolean' (matches 'Y' strings) or 'numeric' (parses a number)
-  function extractColumnEntries(json, colMatcher, mode) {
+  function extractFoodFlags(json) {
     const cols = json.table.cols.map(c => (c.label || c.id || '').toLowerCase().trim());
     const dateIdx = cols.findIndex(c => c.includes('date'));
-    const valIdx = cols.findIndex(colMatcher);
-    if (dateIdx === -1 || valIdx === -1) return null; // column not present in the sheet
+    const foodIdx = cols.findIndex(c => c.includes('no food') || (c.includes('food') && c.includes('2pm')));
+    if (dateIdx === -1 || foodIdx === -1) return null; // column not present in the sheet
 
-    const entries = json.table.rows
+    const flags = json.table.rows
       .map(r => {
         const dateCell = r.c[dateIdx];
-        const valCell = r.c[valIdx];
+        const foodCell = r.c[foodIdx];
         if (!dateCell) return null;
 
         const rawDate = dateCell.v !== undefined && dateCell.v !== null ? dateCell.v : dateCell.f;
         const dateVal = parseSheetDate(rawDate);
         if (isNaN(dateVal.getTime())) return null;
 
-        const rawVal = valCell ? (valCell.v !== undefined && valCell.v !== null ? valCell.v : valCell.f) : null;
+        const rawVal = foodCell ? (foodCell.v !== undefined && foodCell.v !== null ? foodCell.v : foodCell.f) : null;
+        const isY = typeof rawVal === 'string' && rawVal.trim().toUpperCase() === 'Y';
 
-        let value;
-        if (mode === 'boolean') {
-          if (typeof rawVal === 'string' && rawVal.trim() !== '') {
-            value = rawVal.trim().toUpperCase() === 'Y';
-          } else {
-            value = null; // blank cell -> no data, not "No"
-          }
-        } else {
-          const num = typeof rawVal === 'number' ? rawVal : parseFloat(rawVal);
-          value = isNaN(num) ? null : num;
-        }
-
-        return { date: dateVal, value };
+        return { date: dateVal, isY };
       })
       .filter(Boolean);
 
-    return entries;
+    return flags;
   }
 
-  function buildYearMap(entries) {
+  function buildYearMap(flags) {
     const byYear = {};
-    entries.forEach(e => {
-      const year = e.date.getFullYear();
-      const month = e.date.getMonth();
-      const day = e.date.getDate();
+    flags.forEach(f => {
+      const year = f.date.getFullYear();
+      const month = f.date.getMonth();
+      const day = f.date.getDate();
       if (!byYear[year]) byYear[year] = {};
-      byYear[year][`${month}-${day}`] = e.value;
+      byYear[year][`${month}-${day}`] = f.isY;
     });
     return byYear;
   }
 
-  function numericColor(value, min, max) {
-    if (max === min) return 'rgba(138, 154, 91, 0.55)';
-    const t = Math.max(0, Math.min(1, (value - min) / (max - min)));
-    const alpha = 0.15 + t * 0.85;
-    return `rgba(138, 154, 91, ${alpha.toFixed(2)})`;
-  }
-
-  function renderYearGrid(year, dataMap, container, mode, minMax) {
+  function renderYearGrid(year, dataMap, container) {
     const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
     const wrapper = document.createElement('div');
@@ -398,27 +345,15 @@
           td.className = 'cell invalid';
         } else {
           const val = dataMap[`${month}-${day}`];
-
-          if (mode === 'boolean') {
-            if (val === true) {
-              td.className = 'cell yes';
-              td.title = `${monthNames[month]} ${day}, ${year}: Y`;
-            } else if (val === false) {
-              td.className = 'cell no';
-              td.title = `${monthNames[month]} ${day}, ${year}: N`;
-            } else {
-              td.className = 'cell empty';
-              td.title = `${monthNames[month]} ${day}, ${year}: no data`;
-            }
-          } else { // numeric
-            if (typeof val === 'number') {
-              td.className = 'cell value';
-              td.style.background = numericColor(val, minMax.min, minMax.max);
-              td.title = `${monthNames[month]} ${day}, ${year}: ${val}`;
-            } else {
-              td.className = 'cell empty';
-              td.title = `${monthNames[month]} ${day}, ${year}: no data`;
-            }
+          if (val === true) {
+            td.className = 'cell yes';
+            td.title = `${monthNames[month]} ${day}, ${year}: Y`;
+          } else if (val === false) {
+            td.className = 'cell no';
+            td.title = `${monthNames[month]} ${day}, ${year}: N`;
+          } else {
+            td.className = 'cell empty';
+            td.title = `${monthNames[month]} ${day}, ${year}: no data`;
           }
         }
         tr.appendChild(td);
@@ -428,38 +363,6 @@
     table.appendChild(tbody);
     wrapper.appendChild(table);
     container.appendChild(wrapper);
-  }
-
-  function renderGridSection(json, config) {
-    const container = document.getElementById(config.containerId);
-    const statusEl = document.getElementById(config.statusId);
-
-    const entries = extractColumnEntries(json, config.matcher, config.mode);
-
-    if (entries === null) {
-      statusEl.textContent = `Column "${config.columnLabel}" was not found in the sheet.`;
-      statusEl.style.display = 'block';
-      return;
-    }
-    if (entries.length === 0) {
-      statusEl.textContent = `No entries found for "${config.columnLabel}" yet.`;
-      statusEl.style.display = 'block';
-      return;
-    }
-    statusEl.style.display = 'none';
-
-    let minMax = null;
-    if (config.mode === 'numeric') {
-      const nums = entries.map(e => e.value).filter(v => typeof v === 'number');
-      minMax = nums.length > 0
-        ? { min: Math.min(...nums), max: Math.max(...nums) }
-        : { min: 0, max: 1 };
-    }
-
-    const byYear = buildYearMap(entries);
-    Object.keys(byYear)
-      .sort()
-      .forEach(year => renderYearGrid(year, byYear[year], container, config.mode, minMax));
   }
 
   async function loadChart() {
@@ -556,30 +459,24 @@
         }
       });
 
-      // ---- Year grids ----
-      renderGridSection(json, {
-        containerId: 'yearGridsFood',
-        statusId: 'gridStatusFood',
-        matcher: c => c.includes('no food') || (c.includes('food') && c.includes('2pm')),
-        mode: 'boolean',
-        columnLabel: 'No Food after 2pm'
-      });
+      // ---- No Food After 2pm year grids ----
+      const gridContainer = document.getElementById('yearGrids');
+      const gridStatusEl = document.getElementById('gridStatus');
+      const flags = extractFoodFlags(json);
 
-      renderGridSection(json, {
-        containerId: 'yearGridsCarbs',
-        statusId: 'gridStatusCarbs',
-        matcher: c => c.includes('starchy') && c.includes('carb'),
-        mode: 'numeric',
-        columnLabel: 'Starchy Carbs (Day)'
-      });
-
-      renderGridSection(json, {
-        containerId: 'yearGridsSugars',
-        statusId: 'gridStatusSugars',
-        matcher: c => c.includes('free') && c.includes('sugar'),
-        mode: 'numeric',
-        columnLabel: 'Free Sugars (Day)'
-      });
+      if (flags === null) {
+        gridStatusEl.textContent = 'Column "No Food after 2pm" was not found in the sheet.';
+        gridStatusEl.style.display = 'block';
+      } else if (flags.length === 0) {
+        gridStatusEl.textContent = 'No entries found for "No Food after 2pm" yet.';
+        gridStatusEl.style.display = 'block';
+      } else {
+        gridStatusEl.style.display = 'none';
+        const byYear = buildYearMap(flags);
+        Object.keys(byYear)
+          .sort()
+          .forEach(year => renderYearGrid(year, byYear[year], gridContainer));
+      }
 
     } catch (err) {
       console.error(err);
