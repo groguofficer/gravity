@@ -169,6 +169,58 @@
     background: transparent;
     border: none;
   }
+
+  /* Multi-meal (Breakfast/Lunch/Dinner) day cell */
+  table.year-grid td.cell-meals {
+    width: 24px;
+    height: 18px;
+    padding: 0;
+    border: none;
+  }
+
+  .meal-trio {
+    display: flex;
+    gap: 1px;
+    width: 100%;
+    height: 100%;
+  }
+
+  .meal-slot {
+    flex: 1;
+    height: 100%;
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    background: var(--panel);
+  }
+
+  .meal-slot.yes {
+    background: var(--line);
+    border-color: var(--line);
+  }
+
+  .meal-slot.no {
+    background: var(--panel);
+  }
+
+  .meal-slot.empty {
+    background: transparent;
+    border-style: dashed;
+  }
+
+  .meal-trio.invalid {
+    visibility: hidden;
+  }
+
+  .legend-trio {
+    display: inline-flex;
+    gap: 1px;
+    vertical-align: middle;
+  }
+
+  .legend-trio .meal-slot {
+    width: 10px;
+    height: 12px;
+  }
 </style>
 </head>
 <body>
@@ -193,6 +245,30 @@
   </div>
   <div id="yearGrids"></div>
   <div id="gridStatus" class="status"></div>
+</div>
+
+<div class="card grid-card">
+  <h2>🥔 Starchy Carbs</h2>
+  <p class="subtitle">Each day cell shows Breakfast · Lunch · Dinner, left to right.</p>
+  <div class="grid-legend">
+    <span class="legend-item"><span class="legend-trio"><span class="meal-slot yes"></span><span class="meal-slot yes"></span><span class="meal-slot yes"></span></span> Yes</span>
+    <span class="legend-item"><span class="legend-trio"><span class="meal-slot no"></span><span class="meal-slot no"></span><span class="meal-slot no"></span></span> No</span>
+    <span class="legend-item"><span class="legend-trio"><span class="meal-slot empty"></span><span class="meal-slot empty"></span><span class="meal-slot empty"></span></span> No data</span>
+  </div>
+  <div id="starchyGrids"></div>
+  <div id="starchyStatus" class="status"></div>
+</div>
+
+<div class="card grid-card">
+  <h2>🍬 Free Sugars</h2>
+  <p class="subtitle">Each day cell shows Breakfast · Lunch · Dinner, left to right.</p>
+  <div class="grid-legend">
+    <span class="legend-item"><span class="legend-trio"><span class="meal-slot yes"></span><span class="meal-slot yes"></span><span class="meal-slot yes"></span></span> Yes</span>
+    <span class="legend-item"><span class="legend-trio"><span class="meal-slot no"></span><span class="meal-slot no"></span><span class="meal-slot no"></span></span> No</span>
+    <span class="legend-item"><span class="legend-trio"><span class="meal-slot empty"></span><span class="meal-slot empty"></span><span class="meal-slot empty"></span></span> No data</span>
+  </div>
+  <div id="sugarsGrids"></div>
+  <div id="sugarsStatus" class="status"></div>
 </div>
 
 <script>
@@ -321,6 +397,51 @@
     return flags;
   }
 
+  // Extracts per-day Breakfast/Lunch/Dinner Y-flags for a given category,
+  // e.g. categoryKeyword = 'starchy carbs' matches columns like
+  // "Starchy Carbs (Breakfast)", "Starchy Carbs (Lunch)", "Starchy Carbs (Dinner)".
+  function extractMealFlags(headers, dataRows, categoryKeyword) {
+    const dateIdx = headers.findIndex(c => c.includes('date'));
+    const bIdx = headers.findIndex(c => c.includes(categoryKeyword) && c.includes('breakfast'));
+    const lIdx = headers.findIndex(c => c.includes(categoryKeyword) && c.includes('lunch'));
+    const dIdx = headers.findIndex(c => c.includes(categoryKeyword) && c.includes('dinner'));
+
+    if (dateIdx === -1 || (bIdx === -1 && lIdx === -1 && dIdx === -1)) return null;
+
+    const isY = (row, idx) => idx !== -1 && typeof row[idx] === 'string' && row[idx].trim().toUpperCase() === 'Y';
+
+    const flags = dataRows
+      .map(r => {
+        const rawDate = r[dateIdx];
+        if (rawDate === undefined || rawDate === '') return null;
+
+        const dateVal = parseSheetDate(rawDate);
+        if (isNaN(dateVal.getTime())) return null;
+
+        return {
+          date: dateVal,
+          b: bIdx === -1 ? null : isY(r, bIdx),
+          l: lIdx === -1 ? null : isY(r, lIdx),
+          d: dIdx === -1 ? null : isY(r, dIdx)
+        };
+      })
+      .filter(Boolean);
+
+    return flags;
+  }
+
+  function buildYearMapMeals(flags) {
+    const byYear = {};
+    flags.forEach(f => {
+      const year = f.date.getFullYear();
+      const month = f.date.getMonth();
+      const day = f.date.getDate();
+      if (!byYear[year]) byYear[year] = {};
+      byYear[year][`${month}-${day}`] = { b: f.b, l: f.l, d: f.d };
+    });
+    return byYear;
+  }
+
   function buildYearMap(flags) {
     const byYear = {};
     flags.forEach(f => {
@@ -385,6 +506,87 @@
             td.title = `${monthNames[month]} ${day}, ${year}: no data`;
           }
         }
+        tr.appendChild(td);
+      }
+      tbody.appendChild(tr);
+    }
+    table.appendChild(tbody);
+    wrapper.appendChild(table);
+    container.appendChild(wrapper);
+  }
+
+  function mealSlotClass(val) {
+    if (val === true) return 'yes';
+    if (val === false) return 'no';
+    return 'empty';
+  }
+
+  function renderMealYearGrid(year, dataMap, container) {
+    const monthNames = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'year-grid-wrapper';
+
+    const title = document.createElement('h3');
+    title.className = 'year-grid-title';
+    title.textContent = year;
+    wrapper.appendChild(title);
+
+    const table = document.createElement('table');
+    table.className = 'year-grid';
+
+    const thead = document.createElement('thead');
+    const headRow = document.createElement('tr');
+    headRow.appendChild(document.createElement('th'));
+    monthNames.forEach(m => {
+      const th = document.createElement('th');
+      th.textContent = m;
+      headRow.appendChild(th);
+    });
+    thead.appendChild(headRow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    for (let day = 1; day <= 31; day++) {
+      const tr = document.createElement('tr');
+      const dayTh = document.createElement('th');
+      dayTh.textContent = day;
+      dayTh.scope = 'row';
+      tr.appendChild(dayTh);
+
+      for (let month = 0; month < 12; month++) {
+        const td = document.createElement('td');
+        td.className = 'cell-meals';
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+        const trio = document.createElement('div');
+        trio.className = 'meal-trio';
+
+        if (day > daysInMonth) {
+          trio.classList.add('invalid');
+        } else {
+          const val = dataMap[`${month}-${day}`];
+          const b = val ? val.b : null;
+          const l = val ? val.l : null;
+          const d = val ? val.d : null;
+
+          const bSlot = document.createElement('span');
+          bSlot.className = 'meal-slot ' + mealSlotClass(b);
+          const lSlot = document.createElement('span');
+          lSlot.className = 'meal-slot ' + mealSlotClass(l);
+          const dSlot = document.createElement('span');
+          dSlot.className = 'meal-slot ' + mealSlotClass(d);
+
+          trio.title = `${monthNames[month]} ${day}, ${year} — Breakfast: ${b === true ? 'Y' : b === false ? 'N' : '—'}, `
+            + `Lunch: ${l === true ? 'Y' : l === false ? 'N' : '—'}, `
+            + `Dinner: ${d === true ? 'Y' : d === false ? 'N' : '—'}`;
+
+          trio.appendChild(bSlot);
+          trio.appendChild(lSlot);
+          trio.appendChild(dSlot);
+        }
+
+        td.appendChild(trio);
         tr.appendChild(td);
       }
       tbody.appendChild(tr);
@@ -510,6 +712,44 @@
         Object.keys(byYear)
           .sort()
           .forEach(year => renderYearGrid(year, byYear[year], gridContainer));
+      }
+
+      // ---- Starchy Carbs year grids (Breakfast/Lunch/Dinner per day) ----
+      const starchyContainer = document.getElementById('starchyGrids');
+      const starchyStatusEl = document.getElementById('starchyStatus');
+      const starchyFlags = extractMealFlags(headers, dataRows, 'starchy carbs');
+
+      if (starchyFlags === null) {
+        starchyStatusEl.textContent = 'Starchy Carbs columns were not found in the sheet.';
+        starchyStatusEl.style.display = 'block';
+      } else if (starchyFlags.length === 0) {
+        starchyStatusEl.textContent = 'No entries found for Starchy Carbs yet.';
+        starchyStatusEl.style.display = 'block';
+      } else {
+        starchyStatusEl.style.display = 'none';
+        const starchyByYear = buildYearMapMeals(starchyFlags);
+        Object.keys(starchyByYear)
+          .sort()
+          .forEach(year => renderMealYearGrid(year, starchyByYear[year], starchyContainer));
+      }
+
+      // ---- Free Sugars year grids (Breakfast/Lunch/Dinner per day) ----
+      const sugarsContainer = document.getElementById('sugarsGrids');
+      const sugarsStatusEl = document.getElementById('sugarsStatus');
+      const sugarsFlags = extractMealFlags(headers, dataRows, 'free sugars');
+
+      if (sugarsFlags === null) {
+        sugarsStatusEl.textContent = 'Free Sugars columns were not found in the sheet.';
+        sugarsStatusEl.style.display = 'block';
+      } else if (sugarsFlags.length === 0) {
+        sugarsStatusEl.textContent = 'No entries found for Free Sugars yet.';
+        sugarsStatusEl.style.display = 'block';
+      } else {
+        sugarsStatusEl.style.display = 'none';
+        const sugarsByYear = buildYearMapMeals(sugarsFlags);
+        Object.keys(sugarsByYear)
+          .sort()
+          .forEach(year => renderMealYearGrid(year, sugarsByYear[year], sugarsContainer));
       }
 
     } catch (err) {
