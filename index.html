@@ -197,9 +197,8 @@
 
 <script>
   // ---- Configuration ----
-  const SHEET_ID = "1TuLuKPAGWYqXNb-hhPg38pRxQqDHZ46rbRMDZyuApHc";
-  const SHEET_NAME = "gravity";
-  const GVIZ_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(SHEET_NAME)}`;
+  // Published-to-web CSV export link for the sheet/tab.
+  const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vThlXwnKPG_djBYUmfTn1e1K1XwRCa1ufzGgdmnzmGkAka7xVkc_8OabYhIM1El-hlz9xIMjm07SDTV/pub?gid=0&single=true&output=csv";
 
   const statusEl = document.getElementById('status');
 
@@ -209,53 +208,86 @@
     statusEl.style.display = msg ? 'block' : 'none';
   }
 
-  function parseGvizResponse(text) {
-    // Response looks like: google.visualization.Query.setResponse({...});
-    const match = text.match(/google\.visualization\.Query\.setResponse\(([\s\S]*)\);?\s*$/);
-    if (!match) throw new Error("Unexpected response format from Google Sheets.");
-    return JSON.parse(match[1]);
+  // ---- Minimal CSV parser (handles quoted fields, commas & newlines inside quotes) ----
+  function parseCSV(text) {
+    const rows = [];
+    let row = [];
+    let field = '';
+    let inQuotes = false;
+
+    for (let i = 0; i < text.length; i++) {
+      const c = text[i];
+
+      if (inQuotes) {
+        if (c === '"') {
+          if (text[i + 1] === '"') { field += '"'; i++; }
+          else { inQuotes = false; }
+        } else {
+          field += c;
+        }
+      } else {
+        if (c === '"') {
+          inQuotes = true;
+        } else if (c === ',') {
+          row.push(field);
+          field = '';
+        } else if (c === '\n') {
+          row.push(field);
+          rows.push(row);
+          row = [];
+          field = '';
+        } else if (c === '\r') {
+          // skip; \n will terminate the row
+        } else {
+          field += c;
+        }
+      }
+    }
+    // last field/row (in case file doesn't end with newline)
+    if (field.length > 0 || row.length > 0) {
+      row.push(field);
+      rows.push(row);
+    }
+    return rows.filter(r => r.some(cell => cell !== ''));
   }
 
   function parseSheetDate(raw) {
-    if (typeof raw === 'string' && raw.startsWith('Date(')) {
-      // Native Google Sheets date serialization -> "Date(2026,8,13)" (month is 0-indexed)
-      const parts = raw.match(/Date\((\d+),(\d+),(\d+)/);
-      return parts ? new Date(+parts[1], +parts[2], +parts[3]) : new Date(NaN);
-    } else if (typeof raw === 'string' && /^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(raw.trim())) {
-      // Plain text or display string in DD/MM/YYYY (day-first) format
-      const [d, m, y] = raw.trim().split('/').map(Number);
+    if (raw === null || raw === undefined) return new Date(NaN);
+    const str = String(raw).trim();
+
+    if (/^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(str)) {
+      // Day-first format, e.g. 13/9/2026
+      const [d, m, y] = str.split('/').map(Number);
       const fullYear = y < 100 ? 2000 + y : y;
       return new Date(fullYear, m - 1, d);
-    } else if (typeof raw === 'string' && /^\d{4}-\d{2}-\d{2}/.test(raw.trim())) {
+    } else if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
       // ISO format YYYY-MM-DD
-      return new Date(raw.trim());
+      return new Date(str);
     }
-    return new Date(raw);
+    return new Date(str);
   }
 
-  function extractRows(json) {
-    if (json.status === 'error') {
-      const msg = (json.errors && json.errors[0] && json.errors[0].detailed_message) || 'Sheet returned an error.';
-      throw new Error(msg);
-    }
+  function toTable(rows) {
+    // First row = headers
+    const headers = rows[0].map(h => (h || '').toLowerCase().trim());
+    const dataRows = rows.slice(1);
+    return { headers, dataRows };
+  }
 
-    const cols = json.table.cols.map(c => (c.label || c.id || '').toLowerCase().trim());
-    let dateIdx = cols.findIndex(c => c.includes('date'));
-    let entryIdx = cols.findIndex(c => c.includes('entry'));
+  function extractRows(headers, dataRows) {
+    let dateIdx = headers.findIndex(c => c.includes('date'));
+    let entryIdx = headers.findIndex(c => c.includes('entry'));
     if (dateIdx === -1) dateIdx = 0;
     if (entryIdx === -1) entryIdx = 1;
 
-    const rows = json.table.rows
+    const rows = dataRows
       .map(r => {
-        const dateCell = r.c[dateIdx];
-        const entryCell = r.c[entryIdx];
-        if (!dateCell || entryCell === null || entryCell === undefined) return null;
+        const rawDate = r[dateIdx];
+        const rawEntry = r[entryIdx];
+        if (rawDate === undefined || rawEntry === undefined || rawEntry === '') return null;
 
-        // Prefer the raw value; fall back to the formatted display string.
-        const raw = dateCell.v !== undefined && dateCell.v !== null ? dateCell.v : dateCell.f;
-        const dateVal = parseSheetDate(raw);
-
-        const entryVal = typeof entryCell.v === 'number' ? entryCell.v : parseFloat(entryCell.v);
+        const dateVal = parseSheetDate(rawDate);
+        const entryVal = parseFloat(rawEntry);
         if (isNaN(dateVal.getTime()) || isNaN(entryVal)) return null;
 
         return { x: dateVal, y: entryVal };
@@ -266,23 +298,20 @@
     return rows;
   }
 
-  function extractFoodFlags(json) {
-    const cols = json.table.cols.map(c => (c.label || c.id || '').toLowerCase().trim());
-    const dateIdx = cols.findIndex(c => c.includes('date'));
-    const foodIdx = cols.findIndex(c => c.includes('no food') || (c.includes('food') && c.includes('2pm')));
+  function extractFoodFlags(headers, dataRows) {
+    const dateIdx = headers.findIndex(c => c.includes('date'));
+    const foodIdx = headers.findIndex(c => c.includes('no food') || (c.includes('food') && c.includes('2pm')));
     if (dateIdx === -1 || foodIdx === -1) return null; // column not present in the sheet
 
-    const flags = json.table.rows
+    const flags = dataRows
       .map(r => {
-        const dateCell = r.c[dateIdx];
-        const foodCell = r.c[foodIdx];
-        if (!dateCell) return null;
+        const rawDate = r[dateIdx];
+        if (rawDate === undefined || rawDate === '') return null;
 
-        const rawDate = dateCell.v !== undefined && dateCell.v !== null ? dateCell.v : dateCell.f;
         const dateVal = parseSheetDate(rawDate);
         if (isNaN(dateVal.getTime())) return null;
 
-        const rawVal = foodCell ? (foodCell.v !== undefined && foodCell.v !== null ? foodCell.v : foodCell.f) : null;
+        const rawVal = r[foodIdx];
         const isY = typeof rawVal === 'string' && rawVal.trim().toUpperCase() === 'Y';
 
         return { date: dateVal, isY };
@@ -371,14 +400,19 @@
         throw new Error('The charting library failed to load from the CDN. This is usually caused by an ad-blocker or privacy extension — try disabling it for this page and reloading.');
       }
 
-      const res = await fetch(GVIZ_URL);
-      if (!res.ok) throw new Error(`Could not reach the sheet (HTTP ${res.status}). Make sure it's shared as "Anyone with the link can view".`);
+      const res = await fetch(CSV_URL);
+      if (!res.ok) throw new Error(`Could not reach the sheet (HTTP ${res.status}). Make sure the sheet is published to the web (File > Share > Publish to web).`);
       const text = await res.text();
-      const json = parseGvizResponse(text);
-      const rows = extractRows(json);
+      const parsed = parseCSV(text);
+      if (parsed.length < 2) {
+        setStatus('No valid entries found in the published sheet yet.');
+        return;
+      }
+      const { headers, dataRows } = toTable(parsed);
+      const rows = extractRows(headers, dataRows);
 
       if (rows.length === 0) {
-        setStatus('No valid entries found in the "gravity" tab yet.');
+        setStatus('No valid entries found in the published sheet yet.');
         return;
       }
 
@@ -462,7 +496,7 @@
       // ---- No Food After 2pm year grids ----
       const gridContainer = document.getElementById('yearGrids');
       const gridStatusEl = document.getElementById('gridStatus');
-      const flags = extractFoodFlags(json);
+      const flags = extractFoodFlags(headers, dataRows);
 
       if (flags === null) {
         gridStatusEl.textContent = 'Column "No Food after 2pm" was not found in the sheet.';
