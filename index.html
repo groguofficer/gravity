@@ -16,6 +16,9 @@
     --line-fill: rgba(138, 154, 91, 0.15);
     --accent: #a9744f;
     --border: #d8c9a8;
+    --breakfast: #f4c08a;
+    --lunch: #e0883a;
+    --dinner: #a85a1a;
   }
 
   * { box-sizing: border-box; }
@@ -170,6 +173,25 @@
     border: none;
   }
 
+  /* Bold divider between month columns, so months read as distinct blocks */
+  table.year-grid th:nth-child(n+2),
+  table.year-grid td.cell:nth-child(n+2),
+  table.year-grid td.cell-meals:nth-child(n+2) {
+    border-left: 2px solid var(--ink);
+  }
+
+  table.year-grid td.cell.invalid:nth-child(n+2) {
+    border-left: 2px solid var(--ink);
+    border-top: none;
+    border-right: none;
+    border-bottom: none;
+  }
+
+  table.year-grid thead th {
+    border-bottom: 2px solid var(--ink);
+    padding-bottom: 5px;
+  }
+
   /* Multi-meal (Breakfast/Lunch/Dinner) day cell */
   table.year-grid td.cell-meals {
     width: 24px;
@@ -193,11 +215,6 @@
     background: var(--panel);
   }
 
-  .meal-slot.yes {
-    background: var(--line);
-    border-color: var(--line);
-  }
-
   .meal-slot.no {
     background: var(--panel);
   }
@@ -205,6 +222,22 @@
   .meal-slot.empty {
     background: transparent;
     border-style: dashed;
+  }
+
+  /* Breakfast / Lunch / Dinner get distinct shades when marked Y */
+  .meal-trio .meal-slot:nth-child(1).yes {
+    background: var(--breakfast);
+    border-color: var(--breakfast);
+  }
+
+  .meal-trio .meal-slot:nth-child(2).yes {
+    background: var(--lunch);
+    border-color: var(--lunch);
+  }
+
+  .meal-trio .meal-slot:nth-child(3).yes {
+    background: var(--dinner);
+    border-color: var(--dinner);
   }
 
   .meal-trio.invalid {
@@ -221,6 +254,19 @@
     width: 10px;
     height: 12px;
   }
+
+  .meal-dot {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+    border: 1px solid var(--border);
+    vertical-align: middle;
+  }
+
+  .meal-dot.breakfast { background: var(--breakfast); border-color: var(--breakfast); }
+  .meal-dot.lunch { background: var(--lunch); border-color: var(--lunch); }
+  .meal-dot.dinner { background: var(--dinner); border-color: var(--dinner); }
 </style>
 </head>
 <body>
@@ -251,9 +297,10 @@
   <h2>🥔 Starchy Carbs</h2>
   <p class="subtitle">Each day cell shows Breakfast · Lunch · Dinner, left to right.</p>
   <div class="grid-legend">
-    <span class="legend-item"><span class="legend-trio"><span class="meal-slot yes"></span><span class="meal-slot yes"></span><span class="meal-slot yes"></span></span> Yes</span>
-    <span class="legend-item"><span class="legend-trio"><span class="meal-slot no"></span><span class="meal-slot no"></span><span class="meal-slot no"></span></span> No</span>
-    <span class="legend-item"><span class="legend-trio"><span class="meal-slot empty"></span><span class="meal-slot empty"></span><span class="meal-slot empty"></span></span> No data</span>
+    <span class="legend-item"><span class="meal-dot breakfast"></span> Breakfast</span>
+    <span class="legend-item"><span class="meal-dot lunch"></span> Lunch</span>
+    <span class="legend-item"><span class="meal-dot dinner"></span> Dinner</span>
+    <span class="legend-item"><span class="swatch empty"></span> No data</span>
   </div>
   <div id="starchyGrids"></div>
   <div id="starchyStatus" class="status"></div>
@@ -263,9 +310,10 @@
   <h2>🍬 Free Sugars</h2>
   <p class="subtitle">Each day cell shows Breakfast · Lunch · Dinner, left to right.</p>
   <div class="grid-legend">
-    <span class="legend-item"><span class="legend-trio"><span class="meal-slot yes"></span><span class="meal-slot yes"></span><span class="meal-slot yes"></span></span> Yes</span>
-    <span class="legend-item"><span class="legend-trio"><span class="meal-slot no"></span><span class="meal-slot no"></span><span class="meal-slot no"></span></span> No</span>
-    <span class="legend-item"><span class="legend-trio"><span class="meal-slot empty"></span><span class="meal-slot empty"></span><span class="meal-slot empty"></span></span> No data</span>
+    <span class="legend-item"><span class="meal-dot breakfast"></span> Breakfast</span>
+    <span class="legend-item"><span class="meal-dot lunch"></span> Lunch</span>
+    <span class="legend-item"><span class="meal-dot dinner"></span> Dinner</span>
+    <span class="legend-item"><span class="swatch empty"></span> No data</span>
   </div>
   <div id="sugarsGrids"></div>
   <div id="sugarsStatus" class="status"></div>
