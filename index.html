@@ -319,6 +319,19 @@
   <div id="sugarsStatus" class="status"></div>
 </div>
 
+<div class="card grid-card">
+  <h2>🌾 Gluten</h2>
+  <p class="subtitle">Each day cell shows Breakfast · Lunch · Dinner, left to right.</p>
+  <div class="grid-legend">
+    <span class="legend-item"><span class="meal-dot breakfast"></span> Breakfast</span>
+    <span class="legend-item"><span class="meal-dot lunch"></span> Lunch</span>
+    <span class="legend-item"><span class="meal-dot dinner"></span> Dinner</span>
+    <span class="legend-item"><span class="swatch empty"></span> No data</span>
+  </div>
+  <div id="glutenGrids"></div>
+  <div id="glutenStatus" class="status"></div>
+</div>
+
 <script>
   // ---- Configuration ----
   // Published-to-web CSV export link for the sheet/tab.
@@ -798,6 +811,25 @@
         Object.keys(sugarsByYear)
           .sort()
           .forEach(year => renderMealYearGrid(year, sugarsByYear[year], sugarsContainer));
+      }
+
+      // ---- Gluten year grids (Breakfast/Lunch/Dinner per day) ----
+      const glutenContainer = document.getElementById('glutenGrids');
+      const glutenStatusEl = document.getElementById('glutenStatus');
+      const glutenFlags = extractMealFlags(headers, dataRows, 'gluten');
+
+      if (glutenFlags === null) {
+        glutenStatusEl.textContent = 'Gluten columns were not found in the sheet.';
+        glutenStatusEl.style.display = 'block';
+      } else if (glutenFlags.length === 0) {
+        glutenStatusEl.textContent = 'No entries found for Gluten yet.';
+        glutenStatusEl.style.display = 'block';
+      } else {
+        glutenStatusEl.style.display = 'none';
+        const glutenByYear = buildYearMapMeals(glutenFlags);
+        Object.keys(glutenByYear)
+          .sort()
+          .forEach(year => renderMealYearGrid(year, glutenByYear[year], glutenContainer));
       }
 
     } catch (err) {
