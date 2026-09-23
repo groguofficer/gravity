@@ -937,7 +937,6 @@
             ]
           },
           options: {
-            indexAxis: 'y',
             responsive: true,
             maintainAspectRatio: false,
             plugins: {
@@ -956,15 +955,15 @@
             scales: {
               x: {
                 stacked: true,
+                ticks: { color: '#7a6a53' },
+                grid: { display: false }
+              },
+              y: {
+                stacked: true,
                 beginAtZero: true,
                 ticks: { color: '#7a6a53', precision: 0 },
                 grid: { color: '#e4d9bd' },
                 title: { display: true, text: 'Count', color: '#7a6a53' }
-              },
-              y: {
-                stacked: true,
-                ticks: { color: '#7a6a53' },
-                grid: { display: false }
               }
             }
           }
