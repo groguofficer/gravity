@@ -538,35 +538,28 @@
     return flags;
   }
 
-  // Extracts a per-row cumulative-percentage series for a habit:
-  // (habit's "Cumulative" column value) / (Cumulative Max number of meals) * 100.
-  // categoryKeyword e.g. 'starchy carbs', 'free sugars', 'gluten', 'ultraprocessed'.
-  function extractCumulativePercentSeries(headers, dataRows, categoryKeyword) {
-    const normKeyword = normalizeLabel(categoryKeyword);
-    const normHeaders = headers.map(normalizeLabel);
+  // Builds a running cumulative-percentage series from a habit's already-parsed
+  // Breakfast/Lunch/Dinner Y/N flags (as returned by extractMealFlags), rather
+  // than depending on the sheet's own precomputed "(cumulative)" / "Cumulative
+  // Max number of meals" columns — those vary in header wording, cell formatting
+  // (%, commas, blanks) and are easy to mismatch. Each day contributes up to 3
+  // logged meal-slots (b/l/d); running Y-count divided by running logged-slot
+  // count gives "% of meals so far where the habit occurred".
+  function computeCumulativeHabitPercentSeries(flags) {
+    if (!flags || flags.length === 0) return null;
 
-    const dateIdx = headers.findIndex(c => c.includes('date'));
-    const maxIdx = normHeaders.findIndex(c => c.includes('cumulativemax'));
-    const cumIdx = normHeaders.findIndex(c => c.includes(normKeyword) && c.includes('cumulative') && !c.includes('max'));
+    const sorted = [...flags].sort((a, b) => a.date - b.date);
+    let yesCount = 0;
+    let mealCount = 0;
 
-    if (dateIdx === -1 || maxIdx === -1 || cumIdx === -1) return null;
-
-    const series = dataRows
-      .map(r => {
-        const rawDate = r[dateIdx];
-        if (rawDate === undefined || rawDate === '') return null;
-
-        const dateVal = parseSheetDate(rawDate);
-        if (isNaN(dateVal.getTime())) return null;
-
-        const cumVal = parseFloat(r[cumIdx]);
-        const maxVal = parseFloat(r[maxIdx]);
-        if (isNaN(cumVal) || isNaN(maxVal) || maxVal === 0) return null;
-
-        return { x: dateVal, y: (cumVal / maxVal) * 100 };
-      })
-      .filter(Boolean)
-      .sort((a, b) => a.x - b.x);
+    const series = sorted.map(f => {
+      [f.b, f.l, f.d].forEach(v => {
+        if (v === true) { yesCount++; mealCount++; }
+        else if (v === false) { mealCount++; }
+        // null (column not present) doesn't count toward either
+      });
+      return { x: f.date, y: mealCount > 0 ? (yesCount / mealCount) * 100 : 0 };
+    });
 
     return series;
   }
@@ -836,18 +829,25 @@
         }
       });
 
+      // ---- Extract per-meal Y/N flags for the four habits (used below by both
+      // the cumulative % chart and the year grids / breakdown chart) ----
+      const starchyFlags = extractMealFlags(headers, dataRows, 'starchy carbs');
+      const sugarsFlags = extractMealFlags(headers, dataRows, 'free sugars');
+      const glutenFlags = extractMealFlags(headers, dataRows, 'gluten');
+      const ultraprocessedFlags = extractMealFlags(headers, dataRows, 'ultraprocessed');
+
       // ---- Cumulative Habit Compliance % chart ----
       const cumulativeStatusEl = document.getElementById('cumulativeStatus');
       const cumulativeHabitDefs = [
-        { keyword: 'starchy carbs', label: 'Starchy Carbs', color: '#c9a24a' },
-        { keyword: 'free sugars', label: 'Free Sugars', color: '#d1495b' },
-        { keyword: 'gluten', label: 'Gluten', color: '#4a7c9c' },
-        { keyword: 'ultraprocessed', label: 'Ultraprocessed Food', color: '#6b4c9a' }
+        { flags: starchyFlags, label: 'Starchy Carbs', color: '#c9a24a' },
+        { flags: sugarsFlags, label: 'Free Sugars', color: '#d1495b' },
+        { flags: glutenFlags, label: 'Gluten', color: '#4a7c9c' },
+        { flags: ultraprocessedFlags, label: 'Ultraprocessed Food', color: '#6b4c9a' }
       ];
 
       const cumulativeDatasets = cumulativeHabitDefs
         .map(def => {
-          const series = extractCumulativePercentSeries(headers, dataRows, def.keyword);
+          const series = computeCumulativeHabitPercentSeries(def.flags);
           if (!series || series.length === 0) return null;
           return {
             label: def.label,
@@ -932,7 +932,6 @@
       // ---- Starchy Carbs year grids (Breakfast/Lunch/Dinner per day) ----
       const starchyContainer = document.getElementById('starchyGrids');
       const starchyStatusEl = document.getElementById('starchyStatus');
-      const starchyFlags = extractMealFlags(headers, dataRows, 'starchy carbs');
 
       if (starchyFlags === null) {
         starchyStatusEl.textContent = 'Starchy Carbs columns were not found in the sheet.';
@@ -951,7 +950,6 @@
       // ---- Free Sugars year grids (Breakfast/Lunch/Dinner per day) ----
       const sugarsContainer = document.getElementById('sugarsGrids');
       const sugarsStatusEl = document.getElementById('sugarsStatus');
-      const sugarsFlags = extractMealFlags(headers, dataRows, 'free sugars');
 
       if (sugarsFlags === null) {
         sugarsStatusEl.textContent = 'Free Sugars columns were not found in the sheet.';
@@ -970,7 +968,6 @@
       // ---- Gluten year grids (Breakfast/Lunch/Dinner per day) ----
       const glutenContainer = document.getElementById('glutenGrids');
       const glutenStatusEl = document.getElementById('glutenStatus');
-      const glutenFlags = extractMealFlags(headers, dataRows, 'gluten');
 
       if (glutenFlags === null) {
         glutenStatusEl.textContent = 'Gluten columns were not found in the sheet.';
@@ -989,7 +986,6 @@
       // ---- Ultraprocessed Food year grids (Breakfast/Lunch/Dinner per day) ----
       const ultraprocessedContainer = document.getElementById('ultraprocessedGrids');
       const ultraprocessedStatusEl = document.getElementById('ultraprocessedStatus');
-      const ultraprocessedFlags = extractMealFlags(headers, dataRows, 'ultraprocessed');
 
       if (ultraprocessedFlags === null) {
         ultraprocessedStatusEl.textContent = 'Ultraprocessed Food columns were not found in the sheet.';
