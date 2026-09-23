@@ -894,7 +894,21 @@
 
       const availableHabits = habitFlagSets.filter(h => h.flags !== null && h.flags.length > 0);
 
-      if (availableHabits.length === 0) {
+      // Total Meals: count of dated rows in the sheet — each dated entry
+      // represents Breakfast + Lunch + Dinner, so the same count applies
+      // to all three stacked segments.
+      const dateIdxGlobal = headers.findIndex(c => c.includes('date'));
+      let totalDates = 0;
+      if (dateIdxGlobal !== -1) {
+        totalDates = dataRows.filter(r => {
+          const raw = r[dateIdxGlobal];
+          if (raw === undefined || raw === '') return false;
+          const d = parseSheetDate(raw);
+          return !isNaN(d.getTime());
+        }).length;
+      }
+
+      if (availableHabits.length === 0 && totalDates === 0) {
         breakdownStatusEl.textContent = 'No habit data available yet to build the breakdown chart.';
         breakdownStatusEl.style.display = 'block';
       } else {
@@ -906,6 +920,13 @@
         const breakfastCounts = availableHabits.map(h => countYes(h.flags, 'b'));
         const lunchCounts = availableHabits.map(h => countYes(h.flags, 'l'));
         const dinnerCounts = availableHabits.map(h => countYes(h.flags, 'd'));
+
+        if (totalDates > 0) {
+          habitLabels.push('Total Meals');
+          breakfastCounts.push(totalDates);
+          lunchCounts.push(totalDates);
+          dinnerCounts.push(totalDates);
+        }
 
         const breakdownCtx = document.getElementById('mealBreakdownChart').getContext('2d');
         new Chart(breakdownCtx, {
