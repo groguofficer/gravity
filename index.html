@@ -281,6 +281,15 @@
   <footer>Source: Google Sheets </footer>
 </div>
 
+<div class="card">
+  <h2>📊 Meal Breakdown by Habit</h2>
+  <p class="subtitle">Count of Y entries per habit, stacked by meal.</p>
+  <div class="chart-wrap" style="height: 320px;">
+    <canvas id="mealBreakdownChart"></canvas>
+  </div>
+  <div id="breakdownStatus" class="status"></div>
+</div>
+
 <div class="card grid-card">
   <h2>🍽️ No Food After 2pm</h2>
   <p class="subtitle">One grid per year — columns are months, rows are days of the month.</p>
@@ -872,6 +881,94 @@
         Object.keys(ultraprocessedByYear)
           .sort()
           .forEach(year => renderMealYearGrid(year, ultraprocessedByYear[year], ultraprocessedContainer));
+      }
+
+      // ---- Meal Breakdown stacked bar chart ----
+      const breakdownStatusEl = document.getElementById('breakdownStatus');
+      const habitFlagSets = [
+        { label: 'Starchy Carbs', flags: starchyFlags },
+        { label: 'Free Sugars', flags: sugarsFlags },
+        { label: 'Gluten', flags: glutenFlags },
+        { label: 'Ultraprocessed Food', flags: ultraprocessedFlags }
+      ];
+
+      const availableHabits = habitFlagSets.filter(h => h.flags !== null && h.flags.length > 0);
+
+      if (availableHabits.length === 0) {
+        breakdownStatusEl.textContent = 'No habit data available yet to build the breakdown chart.';
+        breakdownStatusEl.style.display = 'block';
+      } else {
+        breakdownStatusEl.style.display = 'none';
+
+        const countYes = (flags, key) => flags.reduce((sum, f) => sum + (f[key] === true ? 1 : 0), 0);
+
+        const habitLabels = availableHabits.map(h => h.label);
+        const breakfastCounts = availableHabits.map(h => countYes(h.flags, 'b'));
+        const lunchCounts = availableHabits.map(h => countYes(h.flags, 'l'));
+        const dinnerCounts = availableHabits.map(h => countYes(h.flags, 'd'));
+
+        const breakdownCtx = document.getElementById('mealBreakdownChart').getContext('2d');
+        new Chart(breakdownCtx, {
+          type: 'bar',
+          data: {
+            labels: habitLabels,
+            datasets: [
+              {
+                label: 'Breakfast',
+                data: breakfastCounts,
+                backgroundColor: '#f4c08a',
+                borderColor: '#f4c08a',
+                borderWidth: 1
+              },
+              {
+                label: 'Lunch',
+                data: lunchCounts,
+                backgroundColor: '#e0883a',
+                borderColor: '#e0883a',
+                borderWidth: 1
+              },
+              {
+                label: 'Dinner',
+                data: dinnerCounts,
+                backgroundColor: '#a85a1a',
+                borderColor: '#a85a1a',
+                borderWidth: 1
+              }
+            ]
+          },
+          options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: {
+                display: true,
+                labels: { color: '#7a6a53', usePointStyle: true, boxWidth: 8 }
+              },
+              tooltip: {
+                backgroundColor: '#3e3226',
+                titleColor: '#fbf6ea',
+                bodyColor: '#fbf6ea',
+                padding: 10,
+                cornerRadius: 6,
+              }
+            },
+            scales: {
+              x: {
+                stacked: true,
+                beginAtZero: true,
+                ticks: { color: '#7a6a53', precision: 0 },
+                grid: { color: '#e4d9bd' },
+                title: { display: true, text: 'Count', color: '#7a6a53' }
+              },
+              y: {
+                stacked: true,
+                ticks: { color: '#7a6a53' },
+                grid: { display: false }
+              }
+            }
+          }
+        });
       }
 
     } catch (err) {
