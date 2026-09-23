@@ -332,6 +332,19 @@
   <div id="glutenStatus" class="status"></div>
 </div>
 
+<div class="card grid-card">
+  <h2>🍔 Ultraprocessed Food</h2>
+  <p class="subtitle">Each day cell shows Breakfast · Lunch · Dinner, left to right.</p>
+  <div class="grid-legend">
+    <span class="legend-item"><span class="meal-dot breakfast"></span> Breakfast</span>
+    <span class="legend-item"><span class="meal-dot lunch"></span> Lunch</span>
+    <span class="legend-item"><span class="meal-dot dinner"></span> Dinner</span>
+    <span class="legend-item"><span class="swatch empty"></span> No data</span>
+  </div>
+  <div id="ultraprocessedGrids"></div>
+  <div id="ultraprocessedStatus" class="status"></div>
+</div>
+
 <script>
   // ---- Configuration ----
   // Published-to-web CSV export link for the sheet/tab.
@@ -458,14 +471,24 @@
     return flags;
   }
 
+  // Normalizes a header/keyword by stripping everything but letters, so
+  // "Ultra-Processed Food (Breakfast)", "Ultra Processed Food (Breakfast)"
+  // and "Ultraprocessed Food (Breakfast)" are all treated the same.
+  function normalizeLabel(str) {
+    return (str || '').toLowerCase().replace(/[^a-z]/g, '');
+  }
+
   // Extracts per-day Breakfast/Lunch/Dinner Y-flags for a given category,
   // e.g. categoryKeyword = 'starchy carbs' matches columns like
   // "Starchy Carbs (Breakfast)", "Starchy Carbs (Lunch)", "Starchy Carbs (Dinner)".
   function extractMealFlags(headers, dataRows, categoryKeyword) {
+    const normKeyword = normalizeLabel(categoryKeyword);
+    const normHeaders = headers.map(normalizeLabel);
+
     const dateIdx = headers.findIndex(c => c.includes('date'));
-    const bIdx = headers.findIndex(c => c.includes(categoryKeyword) && c.includes('breakfast'));
-    const lIdx = headers.findIndex(c => c.includes(categoryKeyword) && c.includes('lunch'));
-    const dIdx = headers.findIndex(c => c.includes(categoryKeyword) && c.includes('dinner'));
+    const bIdx = normHeaders.findIndex(c => c.includes(normKeyword) && c.includes('breakfast'));
+    const lIdx = normHeaders.findIndex(c => c.includes(normKeyword) && c.includes('lunch'));
+    const dIdx = normHeaders.findIndex(c => c.includes(normKeyword) && c.includes('dinner'));
 
     if (dateIdx === -1 || (bIdx === -1 && lIdx === -1 && dIdx === -1)) return null;
 
@@ -830,6 +853,25 @@
         Object.keys(glutenByYear)
           .sort()
           .forEach(year => renderMealYearGrid(year, glutenByYear[year], glutenContainer));
+      }
+
+      // ---- Ultraprocessed Food year grids (Breakfast/Lunch/Dinner per day) ----
+      const ultraprocessedContainer = document.getElementById('ultraprocessedGrids');
+      const ultraprocessedStatusEl = document.getElementById('ultraprocessedStatus');
+      const ultraprocessedFlags = extractMealFlags(headers, dataRows, 'ultraprocessed');
+
+      if (ultraprocessedFlags === null) {
+        ultraprocessedStatusEl.textContent = 'Ultraprocessed Food columns were not found in the sheet.';
+        ultraprocessedStatusEl.style.display = 'block';
+      } else if (ultraprocessedFlags.length === 0) {
+        ultraprocessedStatusEl.textContent = 'No entries found for Ultraprocessed Food yet.';
+        ultraprocessedStatusEl.style.display = 'block';
+      } else {
+        ultraprocessedStatusEl.style.display = 'none';
+        const ultraprocessedByYear = buildYearMapMeals(ultraprocessedFlags);
+        Object.keys(ultraprocessedByYear)
+          .sort()
+          .forEach(year => renderMealYearGrid(year, ultraprocessedByYear[year], ultraprocessedContainer));
       }
 
     } catch (err) {
