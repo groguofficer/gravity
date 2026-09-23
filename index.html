@@ -19,6 +19,10 @@
     --breakfast: #f4c08a;
     --lunch: #e0883a;
     --dinner: #a85a1a;
+    --starchy: #c9a24a;
+    --sugars: #d1495b;
+    --gluten: #4a7c9c;
+    --ultra: #6b4c9a;
   }
 
   * { box-sizing: border-box; }
@@ -267,6 +271,11 @@
   .meal-dot.breakfast { background: var(--breakfast); border-color: var(--breakfast); }
   .meal-dot.lunch { background: var(--lunch); border-color: var(--lunch); }
   .meal-dot.dinner { background: var(--dinner); border-color: var(--dinner); }
+
+  .meal-dot.starchy { background: var(--starchy); border-color: var(--starchy); }
+  .meal-dot.sugars { background: var(--sugars); border-color: var(--sugars); }
+  .meal-dot.gluten { background: var(--gluten); border-color: var(--gluten); }
+  .meal-dot.ultra { background: var(--ultra); border-color: var(--ultra); }
 </style>
 </head>
 <body>
@@ -279,6 +288,15 @@
   </div>
   <div id="status" class="status">Loading data…</div>
   <footer>Source: Google Sheets </footer>
+</div>
+
+<div class="card">
+  <h2>📈 Cumulative Habit Compliance (%)</h2>
+  <p class="subtitle">Each habit's cumulative count as a percentage of the cumulative max number of meals.</p>
+  <div class="chart-wrap" style="height: 380px;">
+    <canvas id="cumulativeHabitChart"></canvas>
+  </div>
+  <div id="cumulativeStatus" class="status"></div>
 </div>
 
 <div class="card">
@@ -518,6 +536,39 @@
       .filter(Boolean);
 
     return flags;
+  }
+
+  // Extracts a per-row cumulative-percentage series for a habit:
+  // (habit's "Cumulative" column value) / (Cumulative Max number of meals) * 100.
+  // categoryKeyword e.g. 'starchy carbs', 'free sugars', 'gluten', 'ultraprocessed'.
+  function extractCumulativePercentSeries(headers, dataRows, categoryKeyword) {
+    const normKeyword = normalizeLabel(categoryKeyword);
+    const normHeaders = headers.map(normalizeLabel);
+
+    const dateIdx = headers.findIndex(c => c.includes('date'));
+    const maxIdx = normHeaders.findIndex(c => c.includes('cumulativemax'));
+    const cumIdx = normHeaders.findIndex(c => c.includes(normKeyword) && c.includes('cumulative') && !c.includes('max'));
+
+    if (dateIdx === -1 || maxIdx === -1 || cumIdx === -1) return null;
+
+    const series = dataRows
+      .map(r => {
+        const rawDate = r[dateIdx];
+        if (rawDate === undefined || rawDate === '') return null;
+
+        const dateVal = parseSheetDate(rawDate);
+        if (isNaN(dateVal.getTime())) return null;
+
+        const cumVal = parseFloat(r[cumIdx]);
+        const maxVal = parseFloat(r[maxIdx]);
+        if (isNaN(cumVal) || isNaN(maxVal) || maxVal === 0) return null;
+
+        return { x: dateVal, y: (cumVal / maxVal) * 100 };
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.x - b.x);
+
+    return series;
   }
 
   function buildYearMapMeals(flags) {
@@ -784,6 +835,80 @@
           }
         }
       });
+
+      // ---- Cumulative Habit Compliance % chart ----
+      const cumulativeStatusEl = document.getElementById('cumulativeStatus');
+      const cumulativeHabitDefs = [
+        { keyword: 'starchy carbs', label: 'Starchy Carbs', color: '#c9a24a' },
+        { keyword: 'free sugars', label: 'Free Sugars', color: '#d1495b' },
+        { keyword: 'gluten', label: 'Gluten', color: '#4a7c9c' },
+        { keyword: 'ultraprocessed', label: 'Ultraprocessed Food', color: '#6b4c9a' }
+      ];
+
+      const cumulativeDatasets = cumulativeHabitDefs
+        .map(def => {
+          const series = extractCumulativePercentSeries(headers, dataRows, def.keyword);
+          if (!series || series.length === 0) return null;
+          return {
+            label: def.label,
+            data: series,
+            borderColor: def.color,
+            backgroundColor: def.color,
+            pointRadius: 2,
+            pointHoverRadius: 5,
+            borderWidth: 2,
+            tension: 0.2,
+            fill: false
+          };
+        })
+        .filter(Boolean);
+
+      if (cumulativeDatasets.length === 0) {
+        cumulativeStatusEl.textContent = 'Cumulative habit columns (or "Cumulative Max number of meals") were not found in the sheet.';
+        cumulativeStatusEl.style.display = 'block';
+      } else {
+        cumulativeStatusEl.style.display = 'none';
+        const cumulativeCtx = document.getElementById('cumulativeHabitChart').getContext('2d');
+        new Chart(cumulativeCtx, {
+          type: 'line',
+          data: { datasets: cumulativeDatasets },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: {
+                display: true,
+                labels: { color: '#7a6a53', usePointStyle: true, boxWidth: 8 }
+              },
+              tooltip: {
+                backgroundColor: '#3e3226',
+                titleColor: '#fbf6ea',
+                bodyColor: '#fbf6ea',
+                padding: 10,
+                cornerRadius: 6,
+                callbacks: {
+                  label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(1)}%`
+                }
+              }
+            },
+            scales: {
+              x: {
+                type: 'time',
+                time: { unit: 'day', tooltipFormat: 'MMM d, yyyy' },
+                grid: { color: '#e4d9bd' },
+                ticks: { color: '#7a6a53' }
+              },
+              y: {
+                min: 0,
+                max: 100,
+                grid: { color: '#e4d9bd' },
+                ticks: { color: '#7a6a53', callback: v => v + '%' },
+                title: { display: true, text: '% of Cumulative Max Meals', color: '#7a6a53' }
+              }
+            }
+          }
+        });
+      }
 
       // ---- No Food After 2pm year grids ----
       const gridContainer = document.getElementById('yearGrids');
