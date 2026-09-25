@@ -24,6 +24,7 @@
     --gluten: #4a7c9c;
     --ultra: #6b4c9a;
     --steps: #5a8f7b;
+    --steps-milestone: #e0a52c;
   }
 
   * { box-sizing: border-box; }
@@ -956,6 +957,21 @@
         stepsStatusEl.style.display = 'block';
       } else {
         stepsStatusEl.style.display = 'none';
+
+        // Days that cross this many steps get a bigger, star-shaped, gold
+        // point instead of the regular small dot, so standout days pop
+        // visually out of the line without needing a separate chart.
+        const STEPS_MILESTONE = 15000;
+        const isMilestone = ctx => {
+          const v = ctx.raw && typeof ctx.raw.y === 'number' ? ctx.raw.y : null;
+          return v !== null && v > STEPS_MILESTONE;
+        };
+
+        const milestoneLine = [
+          { x: stepsSeries[0].x, y: STEPS_MILESTONE },
+          { x: stepsSeries[stepsSeries.length - 1].x, y: STEPS_MILESTONE }
+        ];
+
         const stepsCtx = document.getElementById('stepsChart').getContext('2d');
         new Chart(stepsCtx, {
           type: 'line',
@@ -966,13 +982,28 @@
                 data: stepsSeries,
                 borderColor: '#5a8f7b',
                 backgroundColor: 'rgba(90, 143, 123, 0.15)',
-                pointBackgroundColor: '#5a8f7b',
-                pointBorderColor: '#fbf6ea',
-                pointRadius: 3,
-                pointHoverRadius: 6,
+                pointBackgroundColor: ctx => isMilestone(ctx) ? '#e0a52c' : '#5a8f7b',
+                pointBorderColor: ctx => isMilestone(ctx) ? '#3e3226' : '#fbf6ea',
+                pointBorderWidth: ctx => isMilestone(ctx) ? 2 : 1,
+                pointRadius: ctx => isMilestone(ctx) ? 8 : 3,
+                pointHoverRadius: ctx => isMilestone(ctx) ? 11 : 6,
+                pointStyle: ctx => isMilestone(ctx) ? 'star' : 'circle',
                 borderWidth: 2,
                 tension: 0.25,
-                fill: true
+                fill: true,
+                order: 1
+              },
+              {
+                label: `15,000+ milestone`,
+                data: milestoneLine,
+                borderColor: '#e0a52c',
+                borderDash: [6, 5],
+                borderWidth: 2,
+                pointRadius: 0,
+                pointHitRadius: 0,
+                fill: false,
+                tension: 0,
+                order: 0
               }
             ]
           },
@@ -991,7 +1022,11 @@
                 padding: 10,
                 cornerRadius: 6,
                 callbacks: {
-                  label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y.toLocaleString()}`
+                  label: ctx => {
+                    if (ctx.dataset.label !== 'Steps') return `${ctx.dataset.label}: ${ctx.parsed.y.toLocaleString()}`;
+                    const suffix = isMilestone(ctx) ? '  🌟 15,000+!' : '';
+                    return `${ctx.dataset.label}: ${ctx.parsed.y.toLocaleString()}${suffix}`;
+                  }
                 }
               }
             },
