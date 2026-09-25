@@ -23,6 +23,7 @@
     --sugars: #d1495b;
     --gluten: #4a7c9c;
     --ultra: #6b4c9a;
+    --steps: #5a8f7b;
   }
 
   * { box-sizing: border-box; }
@@ -300,6 +301,15 @@
 </div>
 
 <div class="card">
+  <h2>🚶 Daily Steps</h2>
+  <p class="subtitle">Steps logged for each day.</p>
+  <div class="chart-wrap" style="height: 380px;">
+    <canvas id="stepsChart"></canvas>
+  </div>
+  <div id="stepsStatus" class="status"></div>
+</div>
+
+<div class="card">
   <h2>📊 Meal Breakdown by Habit</h2>
   
   <div class="chart-wrap" style="height: 320px;">
@@ -465,6 +475,33 @@
         if (isNaN(dateVal.getTime()) || isNaN(entryVal)) return null;
 
         return { x: dateVal, y: entryVal };
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.x - b.x);
+
+    return rows;
+  }
+
+  // Extracts a { x: date, y: number } series for a single numeric column,
+  // identified by a keyword in its header (e.g. "steps"). Mirrors extractRows
+  // but for arbitrary numeric columns rather than just "entry".
+  function extractNumericSeries(headers, dataRows, columnKeyword) {
+    const dateIdx = headers.findIndex(c => c.includes('date'));
+    const valIdx = headers.findIndex(c => c.includes(columnKeyword));
+    if (dateIdx === -1 || valIdx === -1) return null;
+
+    const rows = dataRows
+      .map(r => {
+        const rawDate = r[dateIdx];
+        const rawVal = r[valIdx];
+        if (rawDate === undefined || rawVal === undefined || rawVal === '') return null;
+
+        const dateVal = parseSheetDate(rawDate);
+        // Strip thousands separators (e.g. "10,234") before parsing.
+        const numVal = parseFloat(String(rawVal).replace(/,/g, ''));
+        if (isNaN(dateVal.getTime()) || isNaN(numVal)) return null;
+
+        return { x: dateVal, y: numVal };
       })
       .filter(Boolean)
       .sort((a, b) => a.x - b.x);
@@ -904,6 +941,72 @@
                 grid: { color: '#e4d9bd' },
                 ticks: { color: '#7a6a53', callback: v => v + '%' },
                 title: { display: true, text: '% of Cumulative Max Meals', color: '#7a6a53' }
+              }
+            }
+          }
+        });
+      }
+
+      // ---- Daily Steps line chart ----
+      const stepsStatusEl = document.getElementById('stepsStatus');
+      const stepsSeries = extractNumericSeries(headers, dataRows, 'steps');
+
+      if (!stepsSeries || stepsSeries.length === 0) {
+        stepsStatusEl.textContent = 'Column "Steps" was not found in the sheet, or no entries yet.';
+        stepsStatusEl.style.display = 'block';
+      } else {
+        stepsStatusEl.style.display = 'none';
+        const stepsCtx = document.getElementById('stepsChart').getContext('2d');
+        new Chart(stepsCtx, {
+          type: 'line',
+          data: {
+            datasets: [
+              {
+                label: 'Steps',
+                data: stepsSeries,
+                borderColor: '#5a8f7b',
+                backgroundColor: 'rgba(90, 143, 123, 0.15)',
+                pointBackgroundColor: '#5a8f7b',
+                pointBorderColor: '#fbf6ea',
+                pointRadius: 3,
+                pointHoverRadius: 6,
+                borderWidth: 2,
+                tension: 0.25,
+                fill: true
+              }
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: {
+                display: true,
+                labels: { color: '#7a6a53', usePointStyle: true, boxWidth: 8 }
+              },
+              tooltip: {
+                backgroundColor: '#3e3226',
+                titleColor: '#fbf6ea',
+                bodyColor: '#fbf6ea',
+                padding: 10,
+                cornerRadius: 6,
+                callbacks: {
+                  label: ctx => `${ctx.dataset.label}: ${ctx.parsed.y.toLocaleString()}`
+                }
+              }
+            },
+            scales: {
+              x: {
+                type: 'time',
+                time: { unit: 'day', tooltipFormat: 'MMM d, yyyy' },
+                grid: { color: '#e4d9bd' },
+                ticks: { color: '#7a6a53' }
+              },
+              y: {
+                beginAtZero: true,
+                grid: { color: '#e4d9bd' },
+                ticks: { color: '#7a6a53' },
+                title: { display: true, text: 'Steps', color: '#7a6a53' }
               }
             }
           }
